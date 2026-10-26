@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Wochentabelle</title>
+<style>
+:root{
+  --bg:#f4f6f9;--surface:#ffffff;--bar:#dce6f1;--head:#eef1f5;--line:#9aa5b4;--text:#1b2430;--muted:#5b6675;--accent:#1f5fa8;--accent-text:#ffffff;
+  box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){--bg:#14181e;--surface:#1d232c;--bar:#26354a;--head:#252d38;--line:#566274;--text:#e8edf3;--muted:#98a3b3;--accent:#6fa8e8;--accent-text:#0c1520;color-scheme:dark}
+}
+:root[data-theme="dark"]{--bg:#14181e;--surface:#1d232c;--bar:#26354a;--head:#252d38;--line:#566274;--text:#e8edf3;--muted:#98a3b3;--accent:#6fa8e8;--accent-text:#0c1520;color-scheme:dark}
+*,*::before,*::after{box-sizing:border-box}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Segoe UI",Roboto,Arial,sans-serif;font-size:16px}
+.wrap{max-width:1000px;margin:0 auto;padding:0 12px 40px}
+.top{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--bar);border:1px solid var(--line);border-top:0;padding:14px 16px 12px}
+.top::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);background:var(--bar);z-index:6}
+.titlerow{display:flex;flex-wrap:wrap;gap:10px 28px;align-items:center}
+.field{display:flex;align-items:baseline;gap:10px;flex:1 1 260px;min-width:0}
+.field label{font-size:1.6rem;font-weight:700;white-space:nowrap}
+.field input{flex:1;min-width:0;font:inherit;font-size:1.5rem;color:var(--text);background:transparent;border:0;border-bottom:2px solid var(--line);padding:2px 4px;border-radius:0}
+.field input:focus{outline:none;border-bottom-color:var(--accent)}
+.searchrow{margin-top:12px;display:flex;gap:8px}
+.searchrow input{flex:1;min-width:0;font:inherit;font-size:1.05rem;padding:10px 14px;border:1.5px solid var(--line);border-radius:8px;background:var(--surface);color:var(--text)}
+.searchrow input:focus-visible,button:focus-visible,td input:focus-visible{outline:3px solid var(--accent);outline-offset:1px}
+button{font:inherit;cursor:pointer;border-radius:8px;border:1.5px solid var(--line);background:var(--surface);color:var(--text);padding:9px 14px}
+button.primary{background:var(--accent);color:var(--accent-text);border-color:var(--accent);font-weight:600}
+.hint{margin:10px 2px 0;color:var(--muted);font-size:.92rem}
+.empty{margin:48px auto;text-align:center;color:var(--muted);max-width:420px;line-height:1.5}
+.create{margin:24px 0;padding:16px;background:var(--surface);border:1.5px dashed var(--line);border-radius:8px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;justify-content:space-between}
+table{width:100%;border-collapse:collapse;table-layout:fixed;background:var(--surface)}
+thead th{position:sticky;top:var(--barh,120px);z-index:4;background:var(--head);border:1px solid var(--line);padding:10px 4px;font-size:.95rem}
+th.cname{width:18%}th.cnr{width:34px}
+td{border:1px solid var(--line);padding:0;height:46px;vertical-align:middle}
+td input{width:100%;height:100%;min-height:44px;border:0;background:transparent;color:var(--text);font:inherit;font-size:.95rem;padding:4px 6px}
+td.nr{text-align:center;color:var(--muted);font-size:.9rem;background:var(--head)}
+td.name{padding:8px;font-weight:700;vertical-align:top;background:var(--head);word-break:break-word}
+td.name .del{display:block;margin-top:8px;font-size:.78rem;font-weight:400;padding:4px 8px;color:var(--muted)}
+tbody.person.gap tr:first-child td{border-top:3px solid var(--line)}
+@media (max-width:600px){
+  .field label,.field input{font-size:1.15rem}
+  thead th{font-size:.72rem;padding:8px 1px}
+  td input{font-size:.8rem;padding:4px 3px}
+  th.cname{width:20%}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="top" id="top">
+    <div class="titlerow">
+      <div class="field"><label for="week">Woche:</label><input id="week" type="text" autocomplete="off"></div>
+      <div class="field"><label for="date">Datum:</label><input id="date" type="text" autocomplete="off"></div>
+    </div>
+    <div class="searchrow">
+      <input id="q" type="search" placeholder="Namen suchen …" autocomplete="off" aria-label="Namen suchen">
+    </div>
+    <p class="hint" id="hint"></p>
+  </div>
+  <div id="out"></div>
+</div>
+<script>
+(function(){
+  var DAYS=["Montag","Dienstag","Mittwoch","Donnerstag","Freitag"];
+  var KEY="wochentabelle-v1";
+  var state={week:"",date:"",people:{}}; // people: {name:{cells:{"r-d":text}}}
+  try{var raw=localStorage.getItem(KEY);if(raw){var s=JSON.parse(raw);if(s&&typeof s==="object"){state.week=s.week||"";state.date=s.date||"";state.people=s.people||{};}}}catch(e){}
+  function save(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){}}
+  var $=function(id){return document.getElementById(id)};
+  var week=$("week"),date=$("date"),q=$("q"),out=$("out"),hint=$("hint"),top=$("top");
+  week.value=state.week;date.value=state.date;
+  week.addEventListener("input",function(){state.week=week.value;save();});
+  date.addEventListener("input",function(){state.date=date.value;save();});
+  function setBar(){document.documentElement.style.setProperty("--barh",(top.offsetHeight-1)+"px");}
+  window.addEventListener("resize",setBar);
+
+  function esc(s){return s.replace(/[&<>"]/g,function(c){return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]});}
+  function names(){return Object.keys(state.people).sort(function(a,b){return a.localeCompare(b,"de")});}
+
+  function render(){
+    var term=q.value.trim(), low=term.toLowerCase(), n=names().length;
+    hint.textContent=n?(n===1?"1 Name gespeichert.":n+" Namen gespeichert."):"Noch keine Namen gespeichert.";
+    if(!term){
+      out.innerHTML='<div class="empty">Gib oben einen Namen ein. Die passende Tabelle erscheint, sobald du suchst.</div>';
+      setBar();return;
+    }
+    var hits=names().filter(function(nm){return nm.toLowerCase().indexOf(low)!==-1});
+    var html="";
+    var exact=names().some(function(nm){return nm.toLowerCase()===low});
+    if(!exact){
+      html+='<div class="create"><span>'+(hits.length?'Nicht der richtige Name dabei?':'Kein Name „'+esc(term)+'“ gefunden.')+'</span><button class="primary" id="add">„'+esc(term)+'“ neu anlegen</button></div>';
+    }
+    if(hits.length){
+      html+='<table><thead><tr><th class="cname">Name</th><th class="cnr">Nr.</th>'+DAYS.map(function(d){return "<th>"+d+"</th>"}).join("")+'</tr></thead>';
+      hits.forEach(function(nm,i){
+        var cells=state.people[nm].cells||{};
+        html+='<tbody class="person'+(i?' gap':'')+'" data-name="'+esc(nm)+'">';
+        for(var r=1;r<=6;r++){
+          html+="<tr>";
+          if(r===1)html+='<td class="name" rowspan="6">'+esc(nm)+'<button class="del" type="button" data-del="'+esc(nm)+'">Name löschen</button></td>';
+          html+='<td class="nr">'+r+"</td>";
+          for(var d=0;d<5;d++){
+            html+='<td><input type="text" data-k="'+r+"-"+d+'" aria-label="'+esc(nm)+', '+DAYS[d]+', Zeile '+r+'" value="'+esc(cells[r+"-"+d]||"")+'"></td>';
+          }
+          html+="</tr>";
+        }
+        html+="</tbody>";
+      });
+      html+="</table>";
+    }
+    out.innerHTML=html;
+    setBar();
+  }
+
+  q.addEventListener("input",render);
+  q.addEventListener("keydown",function(e){
+    if(e.key==="Enter"){var b=$("add");if(b)b.click();}
+  });
+  out.addEventListener("input",function(e){
+    var t=e.target;if(!t.dataset||!t.dataset.k)return;
+    var nm=t.closest("tbody").dataset.name;
+    var p=state.people[nm];if(!p)return;
+    p.cells=p.cells||{};
+    if(t.value)p.cells[t.dataset.k]=t.value;else delete p.cells[t.dataset.k];
+    save();
+  });
+  out.addEventListener("click",function(e){
+    var t=e.target;
+    if(t.id==="add"){
+      var nm=q.value.trim();
+      if(nm&&!state.people[nm]){state.people[nm]={cells:{}};save();}
+      render();
+      var f=out.querySelector('tbody[data-name="'+nm.replace(/"/g,'\\"')+'"] input');if(f)f.focus();
+    }else if(t.dataset&&t.dataset.del){
+      var nm2=t.dataset.del;
+      if(window.confirm("„"+nm2+"“ mit allen Einträgen löschen?")){delete state.people[nm2];save();render();}
+    }
+  });
+  render();
+})();
+</script>
+</body>
+</html>
